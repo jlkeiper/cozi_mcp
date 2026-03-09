@@ -20,14 +20,29 @@ from pydantic import BaseModel, Field
 
 # Import from py-cozi-client>=1.3.0
 from cozi_client import (
-    CoziClient, 
-    CoziList, 
+    CoziClient,
+    CoziList,
     CoziAppointment,
-    ListType, 
+    ListType,
     ItemStatus,
     CoziException,
     AuthenticationError
 )
+
+# Patch: Cozi API now requires an apikey query parameter on the login endpoint.
+# Without it, Cloudflare returns 408 Request Timeout.
+# See: https://github.com/Wetzel402/py-cozi/pull/3
+import inspect
+_auth_source = inspect.getsource(CoziClient.authenticate)
+if "apikey" not in _auth_source:
+    _orig_make_request = CoziClient._make_request
+
+    async def _patched_make_request(self, method, endpoint, **kwargs):
+        if "/auth/login" in endpoint and "apikey=" not in endpoint:
+            endpoint = endpoint + ("&" if "?" in endpoint else "?") + "apikey=coziwc|v251_production"
+        return await _orig_make_request(self, method, endpoint, **kwargs)
+
+    CoziClient._make_request = _patched_make_request
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
