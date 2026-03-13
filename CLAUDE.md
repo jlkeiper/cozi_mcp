@@ -4,49 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based MCP (Model Context Protocol) server that exposes Cozi Family Organizer API functionality as tools for AI assistants like Claude Desktop. The server provides comprehensive access to Cozi lists, calendar, and family management features.
+This is a Python-based MCP (Model Context Protocol) server that exposes Cozi Family Organizer API functionality as tools for AI assistants like Claude Desktop and Claude Code. The server provides comprehensive access to Cozi lists, calendar, and family management features.
 
-**🚀 Smithery.ai Deployment Ready**: This project is now configured for deployment on Smithery.ai with proper credential management and cloud deployment capabilities.
+There are two server entry points:
+- `src/cozi_mcp/server.py` - Cloud version using Smithery session config for credentials
+- `src/cozi_mcp/server_local.py` - Local stdio version using environment variables for credentials
 
 ## Development Commands
 
-### Local Development with uv (Recommended for Smithery)
-
 - `uv sync` - Install dependencies and sync virtual environment
 - `uv run playground` - Start interactive Smithery playground for testing tools
-- `uv run dev` - Start development server
-- `pip install -e .` - Alternative: Install the package in development mode
-
-### Legacy Development Commands
-
-Based on the Claude Code permissions configured in `.claude/settings.local.json`:
-
-- `COZI_USERNAME=test COZI_PASSWORD=test python debug_appointment.py` - Debug appointment functionality
+- `uv run dev` - Start Smithery development server
+- `./start_local.sh` - Start the local stdio server (loads `.env` automatically)
+- `uv run python3 -m cozi_mcp.server_local` - Start the local stdio server directly
 
 ## Environment Variables
 
-The MCP server requires these environment variables:
+The local server (`server_local.py`) requires these environment variables:
 - `COZI_USERNAME` - Your Cozi account username/email
 - `COZI_PASSWORD` - Your Cozi account password
 
-For testing, use `test` for both values.
+Store them in `.env` (copied from `.env.example`). The `start_local.sh` script loads `.env` automatically.
 
 ## Architecture
 
 ### Core Components
 
-- `src/cozi_mcp/server.py` - FastMCP server implementation with all 13 tool handlers
+- `src/cozi_mcp/server.py` - FastMCP server for Smithery cloud deployment (uses `ctx.session_config` for credentials)
+- `src/cozi_mcp/server_local.py` - FastMCP server for local stdio usage (uses `os.environ` for credentials)
 - `src/cozi_mcp/__init__.py` - Package initialization and exports
+- `start_local.sh` - Convenience script that loads `.env` and starts `server_local.py`
 - `debug_appointment.py` - Debug script for testing appointment functionality
 
 ### Dependencies
 
-- `py-cozi-client>=1.2.0` - Published Cozi API client library
+- `py-cozi-client>=1.3.0` - Published Cozi API client library
 - `mcp>=1.0.0` - Model Context Protocol framework (using FastMCP)
+- `smithery` - Required by `server.py` for cloud deployment
 
-### Available MCP Tools
-
-The server exposes these tools for AI assistants:
+### Available MCP Tools (14 total)
 
 **Family Management:**
 - `get_family_members` - Get all family members in the account
@@ -56,6 +52,7 @@ The server exposes these tools for AI assistants:
 - `get_lists_by_type` - Filter lists by type (shopping/todo)
 - `create_list` - Create new lists
 - `delete_list` - Delete existing lists
+- `update_list` - Update a list (e.g. reorder items)
 
 **Item Management:**
 - `add_item` - Add items to lists
@@ -69,53 +66,55 @@ The server exposes these tools for AI assistants:
 - `update_appointment` - Update existing appointments
 - `delete_appointment` - Delete appointments
 
-## Testing
-
-### Local Testing with Smithery Playground
-
-The recommended way to test the MCP server locally:
-
-```bash
-# Install dependencies
-uv sync
-
-# Start interactive playground (opens browser interface)
-uv run playground
-```
-
-The playground will:
-- Start the MCP server on `http://127.0.0.1:8081`
-- Open Smithery's interactive testing interface
-- Allow you to test all 13 MCP tools with real-time responses
-- Show validation errors and debug information
-
-**Note**: The playground will show config validation warnings since no credentials are provided locally. This is expected behavior.
-
-### Legacy Testing
-
-Test appointment functionality:
-```bash
-COZI_USERNAME=test COZI_PASSWORD=test python debug_appointment.py
-```
-
 ## Integration
 
-### Local Development
-To use this MCP server with Claude Desktop or other MCP clients, configure the client to connect to this server's stdio interface. The server communicates via JSON-RPC over stdin/stdout.
+### Claude Code
 
-### Smithery.ai Deployment
+```bash
+claude mcp add --transport stdio cozi \
+  --env COZI_USERNAME=your-email@example.com \
+  --env COZI_PASSWORD=your-password \
+  -- /path/to/cozi_mcp/start_local.sh
+```
 
-This project is configured for deployment on Smithery.ai with the following files:
+### Claude Desktop
 
-- `smithery.yaml` - Runtime configuration (Python)
-- `pyproject.toml` - Dependencies and server configuration pointing to `cozi_mcp.server:create_server`
-- `requirements.txt` - Python dependencies for deployment
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
-#### Deployment Process:
-1. Push this code to GitHub
-2. Connect your GitHub repository to Smithery.ai
-3. Configure the Cozi username and password in Smithery's deployment settings
-4. Deploy via the Smithery dashboard
+```json
+{
+  "mcpServers": {
+    "cozi": {
+      "command": "uv",
+      "args": ["run", "--project", "/path/to/cozi_mcp", "python3", "-m", "cozi_mcp.server_local"],
+      "env": {
+        "COZI_USERNAME": "your-email@example.com",
+        "COZI_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
 
-#### Configuration:
-The server uses Smithery's configuration system to securely manage Cozi credentials. When deployed, users configure their `username` and `password` through Smithery's interface, eliminating the need for environment variables.
+### mcporter
+
+Add to your `mcporter.json` config:
+
+```json
+{
+  "mcpServers": {
+    "cozi": {
+      "command": "uv",
+      "args": ["run", "--project", "/path/to/cozi_mcp", "python3", "-m", "cozi_mcp.server_local"],
+      "env": {
+        "COZI_USERNAME": "${COZI_USERNAME}",
+        "COZI_PASSWORD": "${COZI_PASSWORD}"
+      }
+    }
+  }
+}
+```
+
+### Smithery.ai
+
+Cloud deployment uses `server.py` with `smithery.yaml` and `pyproject.toml` configuration. Credentials are managed through Smithery's interface.
